@@ -19,6 +19,9 @@ final class AppError extends RuntimeException
 
 final class App
 {
+    private const MIN_PASSWORD_LENGTH = 8;
+    private const MAX_PASSWORD_LENGTH = 128;
+
     private PDO $db;
     private array $config;
 
@@ -54,20 +57,37 @@ final class App
      */
     public function createLink(): void
     {
-        $message = trim((string)($_POST['message'] ?? ''));
-        $files   = $this->readUploads();
+        $message  = trim((string)($_POST['message'] ?? ''));
+        $password = (string)($_POST['password'] ?? '');
+        $files    = $this->readUploads();
 
+        $errors = [];
         if ($message === '' && $files === []) {
-            $this->renderForm(
-                ['Введите сообщение или прикрепите хотя бы одно вложение'],
-                (string)($_POST['message'] ?? '')
-            );
+            $errors[] = 'Введите сообщение или прикрепите хотя бы одно вложение';
+        }
+        if ($password !== '') {
+            $len = mb_strlen($password);
+            if ($len < self::MIN_PASSWORD_LENGTH) {
+                $errors[] = sprintf('Пароль должен быть не короче %d символов', self::MIN_PASSWORD_LENGTH);
+            } elseif ($len > self::MAX_PASSWORD_LENGTH) {
+                $errors[] = sprintf('Пароль должен быть не длиннее %d символов', self::MAX_PASSWORD_LENGTH);
+            }
+        }
+        if ($errors !== []) {
+            $this->renderForm($errors, (string)($_POST['message'] ?? ''));
             return;
         }
 
         $uuid = self::uuidV4();
-        $stmt = $this->db->prepare('INSERT INTO one_time_link (uuid, message) VALUES (:uuid, :message)');
-        $stmt->execute([':uuid' => $uuid, ':message' => $message]);
+        $stmt = $this->db->prepare(
+            'INSERT INTO one_time_link (uuid, message, password_hash)
+             VALUES (:uuid, :message, :password_hash)'
+        );
+        $stmt->execute([
+            ':uuid'          => $uuid,
+            ':message'       => $message,
+            ':password_hash' => $password === '' ? null : password_hash($password, PASSWORD_BCRYPT),
+        ]);
         $linkId = (int)$this->db->lastInsertId();
 
         if ($files !== []) {
@@ -96,7 +116,7 @@ final class App
     public function renderDone(string $uuid): void
     {
         $link = $this->findLink($uuid);
-        render_done($this->shareUrl($link['uuid']));
+        render_done($this->shareUrl($link['uuid']), self::hasPassword($link));
     }
 
     public function shareUrl(string $uuid): string
@@ -112,8 +132,10 @@ final class App
 
     /**
      * /<uuid> — страница получателя.
-     * GET  до просмотра: подтверждение (чекбокс + «просмотреть»).
-     * POST с чекбоксом: показ данных, фиксация просмотра.
+     * GET  до просмотра: подтверждение (чекбокс + «просмотреть»; поле пароля,
+     *      если ссылка защищена).
+     * POST с чекбоксом (и правильным паролем, если он задан): показ данных,
+     *      фиксация просмотра.
      * После просмотра: предупреждение «уже просмотрено» + кто смотрел.
      */
     public function handleView(string $uuid): void
@@ -125,13 +147,22 @@ final class App
             return;
         }
 
+        $hasPassword = self::hasPassword($link);
+
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-            render_confirm($link['uuid'], null);
+            render_confirm($link['uuid'], null, $hasPassword);
+            return;
+        }
+
+        // Пароль проверяется до подтверждения: неверный пароль не расходует
+        // однократный просмотр и не меняет состояние ссылки.
+        if ($hasPassword && !password_verify((string)($_POST['password'] ?? ''), (string)$link['password_hash'])) {
+            render_confirm($link['uuid'], 'Неверный пароль', $hasPassword);
             return;
         }
 
         if (($_POST['confirm'] ?? '') !== '1') {
-            render_confirm($link['uuid'], 'Отметьте чекбокс, чтобы подтвердить просмотр');
+            render_confirm($link['uuid'], 'Отметьте чекбокс, чтобы подтвердить просмотр', $hasPassword);
             return;
         }
 
@@ -201,6 +232,12 @@ final class App
             throw new AppError('Ссылка не найдена. Проверьте, что она введена полностью.');
         }
         return $link;
+    }
+
+    private static function hasPassword(array $link): bool
+    {
+        $hash = $link['password_hash'] ?? null;
+        return is_string($hash) && $hash !== '';
     }
 
     /**

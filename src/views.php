@@ -56,6 +56,11 @@ function render_form(array $errors = [], string $oldMessage = ''): void
         . '<label for="files">Вложения (необязательно)</label>'
         . '<input type="file" id="files" name="files[]" multiple>'
         . '<ul id="file-list" class="file-list"></ul>'
+        . '<label for="password">Пароль (необязательно)</label>'
+        . '<input type="password" id="password" name="password" maxlength="128" '
+        . 'autocomplete="new-password" placeholder="от 8 символов">'
+        . '<p class="hint">Если пароль указан, получателю понадобится он, чтобы открыть ссылку. '
+        . 'Передайте пароль отдельным каналом — не вместе со ссылкой.</p>'
         . '<button type="submit" class="btn">Отправить</button>'
         . '</form>';
 
@@ -63,12 +68,16 @@ function render_form(array $errors = [], string $oldMessage = ''): void
     echo layout('Одноразовое сообщение', $body);
 }
 
-function render_done(string $url): void
+function render_done(string $url, bool $protected = false): void
 {
     $body =
         '<h1>Ссылка готова</h1>'
         . '<p class="hint">Перешлите её получателю. Данные будут показаны <b>только один раз</b>, '
         . 'поэтому не открывайте её сами.</p>'
+        . ($protected
+            ? '<p class="hint">Ссылка защищена паролем — передайте его получателю отдельным '
+            . 'сообщением, а не вместе со ссылкой.</p>'
+            : '')
         . '<div class="link-box">'
         . '<code id="share-url">' . e($url) . '</code>'
         . '<button type="button" class="btn" data-copy="#share-url">Скопировать</button>'
@@ -78,9 +87,14 @@ function render_done(string $url): void
     echo layout('Ссылка готова', $body);
 }
 
-function render_confirm(string $uuid, ?string $error): void
+function render_confirm(string $uuid, ?string $error, bool $password = false): void
 {
     $alert = $error !== null ? '<div class="alert">' . e($error) . '</div>' : '';
+
+    $passwordField = $password
+        ? '<label for="password">Пароль</label>'
+        . '<input type="password" id="password" name="password" required autocomplete="current-password">'
+        : '';
 
     $body =
         '<h1>Одноразовое сообщение</h1>'
@@ -88,6 +102,7 @@ function render_confirm(string $uuid, ?string $error): void
         . 'После просмотра они станут недоступны для всех.</p>'
         . $alert
         . '<form method="post" action="/' . e($uuid) . '">'
+        . $passwordField
         . '<label class="check">'
         . '<input type="checkbox" name="confirm" value="1">'
         . '<span>Я понимаю: данные будут показаны один раз, после чего по ссылке '

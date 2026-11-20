@@ -32,6 +32,15 @@ textarea {
   resize: vertical;
 }
 input[type="file"] { margin-top: .2rem; }
+input[type="password"] {
+  width: 100%;
+  padding: .6rem .7rem;
+  border-radius: 8px;
+  border: 1px solid #c6cad1;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
 .check { display: flex; gap: .55rem; align-items: flex-start; font-weight: 400; }
 .check input { margin-top: .3rem; }
 .btn {

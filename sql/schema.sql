@@ -5,6 +5,9 @@ CREATE TABLE IF NOT EXISTS one_time_link (
     id          INT UNSIGNED  NOT NULL AUTO_INCREMENT,
     uuid        CHAR(36)      NOT NULL,
     message     MEDIUMTEXT    NOT NULL,
+    -- NULL = без пароля; иначе bcrypt-хеш (password_hash()), пароль в открытом
+    -- виде нигде не хранится
+    password_hash VARCHAR(255) NULL DEFAULT NULL,
     created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     -- заполняются ровно один раз, при однократном просмотре
     viewed_at   DATETIME      NULL DEFAULT NULL,
