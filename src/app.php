@@ -265,6 +265,11 @@ final class App
             throw new AppError('Вложение не найдено');
         }
 
+        // Файл найден и отдаётся — фиксируем скачивание. Повторные запросы
+        // (браузерная перезагрузка после обрыва) дадут дополнительные строки,
+        // так что по журналу видно, сколько раз файл реально скачали.
+        $this->logDownload((int)$link['id'], $fileId);
+
         header('Content-Type: ' . $file['content_type']);
         header('Content-Disposition: attachment; filename*=UTF-8\'\'' . rawurlencode($file['file_name']));
         header('Content-Length: ' . (int)$file['file_size']);
@@ -272,14 +277,39 @@ final class App
         echo $file['data'];
     }
 
+    /**
+     * Запись в журнал скачиваний. Best-effort: сбой аудита (например, таблица
+     * ещё не создана) не должен ломать саму отдачу файла.
+     */
+    private function logDownload(int $linkId, int $fileId): void
+    {
+        $ip = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+        $ua = mb_substr(trim((string)($_SERVER['HTTP_USER_AGENT'] ?? '')), 0, 512);
+        try {
+            $stmt = $this->db->prepare(
+                'INSERT INTO download_log (link_id, file_id, ip, ua)
+                 VALUES (:link_id, :file_id, :ip, :ua)'
+            );
+            $stmt->execute([':link_id' => $linkId, ':file_id' => $fileId, ':ip' => $ip, ':ua' => $ua]);
+        } catch (Throwable $e) {
+            // аудит не критичен для доставки — игнорируем
+        }
+    }
+
     private function markViewed(int $id, string $uuid): void
     {
         $ip = (string)($_SERVER['REMOTE_ADDR'] ?? '');
         $ua = mb_substr(trim((string)($_SERVER['HTTP_USER_AGENT'] ?? '')), 0, 512);
 
+        // Тем же атомарным UPDATE, что фиксирует просмотр, стираем секрет:
+        // текст сообщения и хеш пароля больше не нужны (ссылка сгорела,
+        // повторный заход уходит на «уже просмотрено», где они не используются).
+        // Рендер страницы-раскрытия идёт из уже прочитанного в память $link,
+        // поэтому данные получателю уже показаны к моменту этого UPDATE.
         $stmt = $this->db->prepare(
             'UPDATE one_time_link
-             SET viewed_at = NOW(), viewer_ip = :ip, viewer_ua = :ua
+             SET viewed_at = NOW(), viewer_ip = :ip, viewer_ua = :ua,
+                 message = \'\', password_hash = NULL
              WHERE id = :id AND uuid = :uuid AND viewed_at IS NULL'
         );
         $stmt->execute([':ip' => $ip, ':ua' => $ua, ':id' => $id, ':uuid' => $uuid]);
