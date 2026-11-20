@@ -18,6 +18,22 @@ function human_size(int $bytes): string
     return (round($value, $unit > 0 ? 1 : 0)) . ' ' . $units[$unit];
 }
 
+function plural_files(int $n): string
+{
+    $tens = abs($n) % 100;
+    $ones = $tens % 10;
+    if ($tens > 10 && $tens < 20) {
+        return 'файлов';
+    }
+    if ($ones === 1) {
+        return 'файл';
+    }
+    if ($ones >= 2 && $ones <= 4) {
+        return 'файла';
+    }
+    return 'файлов';
+}
+
 function layout(string $title, string $body): string
 {
     return '<!DOCTYPE html>
@@ -45,8 +61,11 @@ try { if (localStorage.getItem("onetime-theme") === "light") { document.document
 </html>';
 }
 
-function render_form(array $errors = [], string $oldMessage = ''): void
+function render_form(array $errors = [], string $oldMessage = '', array $limits = []): void
 {
+    $maxFiles = (int)($limits['max_files'] ?? 10);
+    $maxBytes = (int)($limits['max_file_bytes'] ?? 16 * 1024 * 1024);
+
     $alert = $errors !== []
         ? '<div class="alert">' . implode('<br>', array_map('e', $errors)) . '</div>'
         : '';
@@ -60,7 +79,7 @@ function render_form(array $errors = [], string $oldMessage = ''): void
         . '<label for="message">Сообщение</label>'
         . '<textarea id="message" name="message" rows="8" placeholder="Секретные данные: пароль, заметка, …">'
         . e($oldMessage) . '</textarea>'
-        . '<label for="files">Вложения (необязательно)</label>'
+        . '<label for="files">Вложения (необязательно) — до ' . $maxFiles . ' ' . plural_files($maxFiles) . ', до ' . human_size($maxBytes) . ' каждый</label>'
         . '<input type="file" id="files" name="files[]" multiple>'
         . '<ul id="file-list" class="file-list"></ul>'
         . '<label for="password">Пароль (необязательно)</label>'

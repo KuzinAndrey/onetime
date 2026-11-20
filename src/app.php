@@ -24,6 +24,7 @@ final class App
 
     private PDO $db;
     private array $config;
+    private ?array $uploadLimits = null;
 
     private function __construct(array $config)
     {
@@ -49,7 +50,81 @@ final class App
 
     public function renderForm(array $errors = [], string $oldMessage = ''): void
     {
-        render_form($errors, $oldMessage);
+        render_form($errors, $oldMessage, $this->uploadLimits());
+    }
+
+    /**
+     * Фактический лимит вложения: минимум из лимита приложения
+     * (config['limits']), upload_max_filesize / post_max_size PHP и
+     * max_allowed_packet БД (файл уходит одним INSERT-ом).
+     *
+     * client_max_body_size Nginx из PHP невидим — он должен быть не меньше
+     * вычисленного значения (см. deploy/nginx.conf.example).
+     *
+     * @return array{max_files: int, max_file_bytes: int}
+     */
+    public function uploadLimits(): array
+    {
+        if ($this->uploadLimits === null) {
+            $candidates = [
+                (int)($this->config['limits']['max_file_bytes'] ?? 16 * 1024 * 1024),
+                self::iniBytes('upload_max_filesize'),
+                self::iniBytes('post_max_size'),
+            ];
+            $dbBytes = $this->dbMaxPacketBytes();
+            if ($dbBytes !== null) {
+                $candidates[] = $dbBytes;
+            }
+            $this->uploadLimits = [
+                'max_files'      => (int)($this->config['limits']['max_files'] ?? 10),
+                'max_file_bytes' => min($candidates),
+            ];
+        }
+        return $this->uploadLimits;
+    }
+
+    /**
+     * Значение ini-параметра в байтах («16M», «512K», «8G», число — байты).
+     * 0 / пусто / не распознано — не ограничивает (PHP_INT_MAX).
+     */
+    private static function iniBytes(string $key): int
+    {
+        $value = strtolower(trim((string)ini_get($key)));
+        if ($value === '' || $value === '0' || $value === '-1') {
+            return PHP_INT_MAX;
+        }
+        if (preg_match('/^(\d+(?:\.\d+)?)\s*([kmg]i?b?)?$/', $value, $m)) {
+            $mult = 1;
+            if (!empty($m[2])) {
+                $unit = $m[2][0];
+                $mult = $unit === 'k'
+                    ? 1024
+                    : ($unit === 'm' ? 1024 * 1024 : 1024 * 1024 * 1024);
+            }
+            return (int)((float)$m[1] * $mult);
+        }
+        return PHP_INT_MAX;
+    }
+
+    /**
+     * max_allowed_packet БД в байтах; null, если определить не удалось
+     * (таблица не MySQL/MariaDB или ошибка запроса) — тогда лимит БД
+     * в расчёт не идёт.
+     */
+    private function dbMaxPacketBytes(): ?int
+    {
+        try {
+            $row = $this->db->query("SHOW VARIABLES LIKE 'max_allowed_packet'")->fetch();
+            if (is_array($row) && isset($row['Value'])) {
+                $bytes = (int)$row['Value'];
+                if ($bytes > 0) {
+                    return $bytes;
+                }
+            }
+        } catch (Throwable $e) {
+            // не критично — остаётся минимум из остальных лимитов
+        }
+        return null;
     }
 
     /**
@@ -256,8 +331,9 @@ final class App
             return [];
         }
 
-        $maxFiles = (int)($this->config['limits']['max_files'] ?? 10);
-        $maxBytes = (int)($this->config['limits']['max_file_bytes'] ?? 16 * 1024 * 1024);
+        $limits   = $this->uploadLimits();
+        $maxFiles = $limits['max_files'];
+        $maxBytes = $limits['max_file_bytes'];
         if ($count > $maxFiles) {
             throw new AppError(sprintf('Слишком много вложений: не более %d файлов', $maxFiles), 400);
         }
@@ -276,7 +352,7 @@ final class App
             $size = (int)($raw['size'][$i] ?? 0);
             if ($size > $maxBytes) {
                 throw new AppError(
-                    sprintf('Файл «%s» слишком большой: не более %d МБ', $name, intdiv($maxBytes, 1024 * 1024)),
+                    sprintf('Файл «%s» слишком большой: не более %s', $name, human_size($maxBytes)),
                     400
                 );
             }

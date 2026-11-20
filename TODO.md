@@ -80,3 +80,10 @@
   тёмной, светлая включается атрибутом data-theme="light" на <html>
   (переключатель «Сменить тему» в подвале, выбор в localStorage, bootstrap
   в <head> против «вспышки»); медиа-запрос prefers-color-scheme убран.
+- 2026-11-20 — форма показывает фактический лимит вложений: App::uploadLimits()
+  = min(limits из config, upload_max_filesize/post_max_size PHP,
+  max_allowed_packet БД через SHOW VARIABLES), подпись «Вложения
+  (необязательно) — до N файлов, до X каждый» генерируется из этих значений;
+  readUploads и сообщения об ошибках тоже используют фактический лимит.
+  Проверено на develop: изменение PHP ini и max_allowed_packet меняло
+  вычисленное значение (8M/4M), всё возвращено (16M/64M), регрессия 26/26.
