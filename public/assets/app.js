@@ -57,3 +57,25 @@ function copyFallback(text) {
   }
   ta.remove();
 }
+
+// Переключатель темы: тёмная — по умолчанию, светлая включается
+// атрибутом data-theme="light"; выбор запоминается в localStorage.
+(function () {
+  const button = document.getElementById('theme-toggle');
+  if (!button) return;
+  const THEME_KEY = 'onetime-theme';
+  button.addEventListener('click', () => {
+    const root = document.documentElement;
+    const toLight = root.getAttribute('data-theme') !== 'light';
+    if (toLight) {
+      root.setAttribute('data-theme', 'light');
+    } else {
+      root.removeAttribute('data-theme');
+    }
+    try {
+      localStorage.setItem(THEME_KEY, toLight ? 'light' : 'dark');
+    } catch (err) {
+      // localStorage недоступен — тема живёт только до перезагрузки
+    }
+  });
+})();

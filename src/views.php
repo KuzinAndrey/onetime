@@ -27,12 +27,19 @@ function layout(string $title, string $body): string
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>' . e($title) . ' — одноразовая ссылка</title>
 <link rel="stylesheet" href="/assets/style.css">
+<script>
+/* Применяем сохранённую тему до отрисовки, чтобы не было «вспышки»
+   светлой/тёмной темы. Тёмная — по умолчанию. */
+try { if (localStorage.getItem("onetime-theme") === "light") { document.documentElement.setAttribute("data-theme", "light"); } } catch (e) {}
+</script>
 </head>
 <body>
 <main class="card">
 ' . $body . '
 </main>
-<footer class="foot">одноразовая ссылка · просмотр один раз</footer>
+<footer class="foot">одноразовая ссылка · просмотр один раз
+<button type="button" class="theme-toggle" id="theme-toggle" aria-label="Сменить тему">Сменить тему</button>
+</footer>
 <script src="/assets/app.js"></script>
 </body>
 </html>';
