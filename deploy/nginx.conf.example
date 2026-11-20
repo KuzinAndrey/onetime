@@ -1,0 +1,36 @@
+# Пример vhost Nginx для приложения одноразовых ссылок.
+#
+# Скопируйте в каталог включений nginx (например /etc/nginx/conf.d/
+# или /etc/nginx/http.d/) и подставьте:
+#   - server_name — домен проекта, например onetime.example.com;
+#   - fastcgi_pass — адрес пула PHP-FPM (параметр listen в конфиге пула).
+#
+# Для продакшена добавьте TLS (listen 443 ssl) — буфер обмена в браузере
+# доступен только в защищённом контексте.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name _;
+
+    root /var/www/onetime/public;
+    index index.php;
+
+    # Приложение принимает вложения; лимит согласуйте с лимитами из конфига
+    client_max_body_size 170m;
+
+    location / {
+        try_files $uri $uri/ /index.php$is_args$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+
+    # Скрытые файлы (.git, конфиги и т.п.) никогда не отдаём
+    location ~ /\. {
+        deny all;
+    }
+}
