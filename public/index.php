@@ -4,6 +4,11 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/src/app.php';
 require dirname(__DIR__) . '/src/views.php';
 
+// Данные одноразовые: ответы не должны кешироваться (иначе повторное
+// открытие ссылки может показать устаревшую страницу).
+header('Cache-Control: no-store, max-age=0, must-revalidate');
+header('Pragma: no-cache');
+
 $uuidPattern = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 
 try {
